@@ -136,7 +136,7 @@ async function getExpeditionList(from, to, date, chatId) {
       () => clickWithCheck("#toTrainInput", chatId),
       () => clickWithCheck(`#donus-${to}`, chatId),
       () => clickWithCheck(".departureDate", chatId),
-      () => clickWithCheck(`[id="${date}"]`, chatId),
+      () => clickWithCheck(`td:not(.off) > [id="${date}"]`, chatId),
       () => clickWithCheck("#searchSeferButton", chatId),
     ];
 
@@ -202,7 +202,7 @@ async function checkSelectedExpedition(
       "#toTrainInput",
       `#donus-${to}`,
       ".departureDate",
-      `[id="${date}"]`,
+      `td:not(.off) > [id="${date}"]`,
       "#searchSeferButton",
     ];
 

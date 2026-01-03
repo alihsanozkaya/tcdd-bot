@@ -8,7 +8,7 @@ const firstCheckDone = new Map();
 
 async function getBrowserForUser(userId) {
   if (!userBrowsers.has(userId)) {
-    const browser = await chromium.launch({ headless: false });
+    const browser = await chromium.launch({ headless: true });
     userBrowsers.set(userId, browser);
   }
   return userBrowsers.get(userId);
@@ -36,7 +36,6 @@ export async function closeSearchTab(searchId) {
   }
 }
 
-//#region
 export async function getTripList(userId, from, to, date) {
   const browser = await getBrowserForUser(userId);
   const page = await browser.newPage();
@@ -223,7 +222,7 @@ export async function startMultiTripChecker(
         }
       }
 
-      await new Promise((r) => setTimeout(r, 15000));
+      await new Promise((r) => setTimeout(r, 120000));
 
       if (!activeTasks.get(searchId)) {
         await page.reload({ waitUntil: "networkidle" }).catch(() => {});

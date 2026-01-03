@@ -11,7 +11,7 @@ async function getBrowserForUser(userId) {
   if (!userBrowsers.has(userId)) {
     const browser = await chromium.launch({
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--lang=tr-TR"],
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     userBrowsers.set(userId, browser);
   }
@@ -31,8 +31,6 @@ async function getPageForSearch(userId, searchId) {
     const browser = await getBrowserForUser(userId);
     const context = await browser.newContext({
       viewport: { width: 1280, height: 720 },
-      locale: "tr-TR",
-      timezoneId: "Europe/Istanbul",
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
     });
@@ -50,13 +48,13 @@ export async function closeSearchTab(searchId) {
   }
 }
 
-export async function getTripList(userId, from, to, date, callbacks = {}) {
+export async function getTripList(userId, from, to, date) {
   const browser = await getBrowserForUser(userId);
   const page = await browser.newPage();
 
   try {
     await page.goto("https://ebilet.tcddtasimacilik.gov.tr/", {
-      waitUntil: "domcontentloaded",
+      waitUntil: "networkidle",
       timeout: 60000,
     });
 
@@ -96,42 +94,25 @@ export async function getTripList(userId, from, to, date, callbacks = {}) {
     await searchBtn.click();
 
     await page.waitForTimeout(2000);
-    await page.waitForSelector(".seferInformationArea", {
-      timeout: 20000,
-    });
+    await page.waitForSelector(".seferInformationArea");
 
-    await page.screenshot({
-      path: `/tmp/tcdd-${userId}.png`,
-      fullPage: true,
-    });
-
-    if (callbacks.onScreenshot) {
-      await callbacks.onScreenshot(`/tmp/tcdd-${userId}.png`);
-    }
-
-    const tripButtons = await page.$$(".seferInformationArea button");
+    const tripButtons = await page.$$('button[id^="gidis"][id*="btn"]');
     const tripList = [];
 
     for (const btn of tripButtons) {
-      const text = (await btn.innerText()).trim();
-      if (!text) continue;
-
-      const upper = text.toUpperCase();
-
-      if (!upper.includes("YHT")) continue;
-      if (!upper.match(/\d{2}:\d{2}/)) continue;
-
-      const id = await btn.getAttribute("id");
-      const tripData = parseTripText(text);
-
-      tripList.push({
-        id,
-        text,
-        departureStation: tripData.departureStation,
-        arrivalStation: tripData.arrivalStation,
-        departureDate: tripData.date,
-        departureTime: tripData.departureTime,
-      });
+      const text = await btn.innerText();
+      if (text && text.toUpperCase().includes("YHT")) {
+        const id = await btn.getAttribute("id");
+        const tripData = parseTripText(text);
+        tripList.push({
+          id,
+          text,
+          departureStation: tripData.departureStation,
+          arrivalStation: tripData.arrivalStation,
+          departureDate: tripData.date,
+          departureTime: tripData.departureTime,
+        });
+      }
     }
 
     await page.close();
@@ -160,7 +141,7 @@ export async function startMultiTripChecker(
 
   try {
     await page.goto("https://ebilet.tcddtasimacilik.gov.tr/", {
-      waitUntil: "domcontentloaded",
+      waitUntil: "networkidle",
       timeout: 60000,
     });
 
@@ -200,9 +181,7 @@ export async function startMultiTripChecker(
     await searchBtn.click();
 
     await page.waitForTimeout(2000);
-    await page.waitForSelector(".seferInformationArea", {
-      timeout: 20000,
-    });
+    await page.waitForSelector(".seferInformationArea");
 
     while (!activeTasks.get(searchId)) {
       const isFirstCheck = !firstCheckDone.get(searchId);
@@ -259,9 +238,9 @@ export async function startMultiTripChecker(
       await new Promise((r) => setTimeout(r, 120000));
 
       if (!activeTasks.get(searchId)) {
-        await page.reload({ waitUntil: "domcontentloaded" }).catch(() => {});
+        await page.reload({ waitUntil: "networkidle" }).catch(() => {});
         await page
-          .waitForSelector(".seferInformationArea", { timeout: 15000 })
+          .waitForSelector(".seferInformationArea", { timeout: 10000 })
           .catch(() => {});
       }
     }

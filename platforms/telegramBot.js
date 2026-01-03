@@ -441,13 +441,7 @@ export const startTelegramBot = () => {
           return await bot.sendMessage(chatId, MSG.selectMaxDate);
 
         const user = await findOrCreateUser(state.telegramId);
-        const list = await getTripList(user._id, state.from, state.to, text, {
-          onScreenshot: async (filePath) => {
-            await bot.sendPhoto(chatId, filePath, {
-              caption: "📸 Render ortamı ekran görüntüsü",
-            });
-          },
-        });
+        const list = await getTripList(user._id, state.from, state.to, text);
 
         if (!list.length) {
           clearState(chatId);

@@ -1,8 +1,8 @@
-function isValidDateFormat(dateStr) {
+export function isValidDateFormat(dateStr) {
   return /^\d{2} \d{2} \d{4}$/.test(dateStr);
 }
 
-function formatConfirmationMessage(fromCode, toCode, date, stations) {
+export function formatConfirmationMessage(fromCode, toCode, date, stations) {
   return `✅ Bilgiler alındı:
 Kalkış: ${stations[fromCode]}
 Varış: ${stations[toCode]}
@@ -11,7 +11,7 @@ Tarih: ${date}
 🔍 Sorgu başlatılıyor...`;
 }
 
-function parseExpeditionText(text) {
+export function parseTripText(text) {
   const lines = text
     .split("\n")
     .map((line) => line.trim())
@@ -32,7 +32,7 @@ function parseExpeditionText(text) {
   };
 }
 
-function formatExpeditionListItem(exp, index) {
+export function formatTripistItem(exp, index) {
   const {
     trainLine,
     departureStation,
@@ -40,7 +40,7 @@ function formatExpeditionListItem(exp, index) {
     arrivalStation,
     departureTime,
     arrivalTime,
-  } = parseExpeditionText(exp.text);
+  } = parseTripText(exp.text);
 
   const emoji = trainLine.startsWith("YHT")
     ? "🚅"
@@ -55,40 +55,17 @@ function formatExpeditionListItem(exp, index) {
 `;
 }
 
-function formatSelectedExpedition(exp) {
-  const {
-    trainLine,
-    departureStation,
-    duration,
-    arrivalStation,
-    departureTime,
-    arrivalTime,
-    date,
-  } = parseExpeditionText(exp.text);
+export function formatActiveSearches(searches, stations, seats) {
+  if (!searches.length) return "🔍 Aktif aramanız bulunmuyor.";
 
-  const emoji = trainLine.startsWith("YHT")
-    ? "🚅"
-    : trainLine.startsWith("ANAHAT")
-    ? "🚞"
-    : "🚄";
-
-  return `
-✅ Seçilen Sefer:
-
-${emoji} ${trainLine}
-
-  🚉 ${departureStation} → ${arrivalStation}
-  📅 ${date}
-  🕕 ${departureTime} - ${arrivalTime} (${duration})
-
-📡 Kontrol başlatılıyor...
-`.trim();
+  let message = "🔍 Aktif Aramalarınız:\n\n";
+  searches.forEach((search, i) => {
+    message += `${i + 1}. ${
+      stations.find((s) => s.code == search.fromStationCode).name
+    } → ${stations.find((s) => s.code == search.toStationCode).name}\n`;
+    message += `   📅 ${search.travelDate}\n`;
+    message += `   💺 ${seats.find((s) => s._id == search.seatType).name}\n`;
+    message += `   🚂 ${search.tripList.length} sefer izleniyor\n\n`;
+  });
+  return message;
 }
-
-module.exports = {
-  isValidDateFormat,
-  formatConfirmationMessage,
-  formatExpeditionListItem,
-  formatSelectedExpedition,
-  parseExpeditionText
-};

@@ -1,6 +1,7 @@
 {
   "name": "tcdd-otomasyon",
   "version": "1.0.0",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -12,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "axios": "^1.13.2",
     "dotenv": "^17.2.0",
     "node-cron": "^4.2.1",
     "node-telegram-bot-api": "^0.66.0",

@@ -1,324 +1,300 @@
-const { chromium } = require("playwright");
-const { parseExpeditionText } = require("../utils/formatter");
+import { chromium } from "playwright";
+import { parseTripText } from "../utils/formatter.js";
 
-const browsers = new Map();
-const pages = new Map();
-const stopCheckingFlags = new Map();
-const stopProgressFlags = new Map();
+const userBrowsers = new Map();
+const activeTabs = new Map();
+const activeTasks = new Map();
+const firstCheckDone = new Map();
 
-async function createStealthBrowser(headless) {
-  const browser = await chromium.launch({
-    headless: headless,
-    args: [
-      "--disable-blink-features=AutomationControlled",
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-gpu",
-    ],
-  });
-
-  const context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
-  });
-
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, "webdriver", { get: () => false });
-    window.chrome = { runtime: {} };
-    Object.defineProperty(navigator, "languages", {
-      get: () => ["tr-TR", "tr"],
-    });
-    Object.defineProperty(navigator, "plugins", {
-      get: () => [1, 2, 3],
-    });
-  });
-
-  return { browser, context };
+async function getBrowserForUser(userId) {
+  if (!userBrowsers.has(userId)) {
+    const browser = await chromium.launch({ headless: false });
+    userBrowsers.set(userId, browser);
+  }
+  return userBrowsers.get(userId);
 }
 
-async function launchBrowser(chatId) {
-  if (!browsers.has(chatId)) {
-    const { browser, context } = await createStealthBrowser(true);
+async function getPageForSearch(userId, searchId) {
+  if (!activeTabs.has(searchId)) {
+    const browser = await getBrowserForUser(userId);
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+    });
     const page = await context.newPage();
-    browsers.set(chatId, browser);
-    pages.set(chatId, page);
+    activeTabs.set(searchId, page);
+  }
+  return activeTabs.get(searchId);
+}
+
+export async function closeSearchTab(searchId) {
+  const page = activeTabs.get(searchId);
+  if (page) {
+    await page.close().catch(() => {});
+    activeTabs.delete(searchId);
   }
 }
 
-async function closeBrowser(chatId) {
-  if (browsers.has(chatId)) {
-    await browsers.get(chatId).close();
-    browsers.delete(chatId);
-    pages.delete(chatId);
-  }
-}
-
-function shouldStop(chatId) {
-  return stopProgressFlags.get(chatId);
-}
-
-async function closeListBrowser(chatId) {
-  await closeBrowser(chatId);
-}
-
-async function checkIfSeatAvailable(
-  pageLocal,
-  expeditionId,
-  selectedSeatClass
-) {
-  const buttons = await pageLocal.$$(
-    `#collapseBody${expeditionId.replace(
-      "btn",
-      ""
-    )} button[id^="sefer-"][id$="-departure"]`
-  );
-
-  for (const button of buttons) {
-    const text = await button.innerText();
-    const lines = text
-      .trim()
-      .split("\n")
-      .map((l) => l.trim());
-
-    if (lines[0] === selectedSeatClass.toUpperCase()) {
-      const isFull = lines.some((line) => line.toUpperCase().includes("DOLU"));
-      if (!isFull) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-async function clickWithCheck(selector, chatId) {
-  if (shouldStop(chatId)) return false;
-
-  try {
-    const page = pages.get(chatId);
-    await page.waitForSelector(selector, { timeout: 15000 });
-    await page.click(selector);
-    await page.waitForTimeout(500);
-    return true;
-  } catch (e) {
-    console.error(`Hata (selector: ${selector}, chatId: ${chatId}):`, e);
-    return false;
-  }
-}
-
-async function waitForOverlay(page) {
-  try {
-    await page.waitForSelector(".vld-overlay.is-active", {
-      state: "hidden",
-      timeout: 5000,
-    });
-  } catch {
-    console.log("Overlay gözükmedi veya timeout oldu, devam ediliyor...");
-  }
-}
-
-async function getExpeditionList(from, to, date, chatId) {
-  stopProgressFlags.set(chatId, false);
-  await launchBrowser(chatId);
-
-  const page = pages.get(chatId);
+//#region
+export async function getTripList(userId, from, to, date) {
+  const browser = await getBrowserForUser(userId);
+  const page = await browser.newPage();
 
   try {
     await page.goto("https://ebilet.tcddtasimacilik.gov.tr/", {
       waitUntil: "networkidle",
       timeout: 60000,
     });
-    await page.waitForTimeout(1000);
 
-    const actions = [
-      () => clickWithCheck("#fromTrainInput", chatId),
-      () => clickWithCheck(`#gidis-${from}`, chatId),
-      () => clickWithCheck("#toTrainInput", chatId),
-      () => clickWithCheck(`#donus-${to}`, chatId),
-      () => clickWithCheck(".departureDate", chatId),
-      () => clickWithCheck(`td:not(.off) > [id="${date}"]`, chatId),
-      () => clickWithCheck("#searchSeferButton", chatId),
-    ];
+    await page.waitForSelector("#fromTrainInput");
+    await page.click("#fromTrainInput");
 
-    for (const action of actions) {
-      const result = await action();
-      if (!result) {
-        return null;
+    await page.waitForTimeout(100);
+    await page.click(`#gidis-${from}`);
+
+    await page.waitForTimeout(100);
+    await page.click("#toTrainInput");
+
+    await page.waitForTimeout(100);
+    await page.click(`#donus-${to}`);
+
+    await page.waitForTimeout(100);
+    await page.click(".departureDate");
+
+    await page.waitForTimeout(500);
+
+    const [day, month, year] = date.split(" ");
+    let dateElement =
+      (await page.$(`td:not(.off) > [id="${date}"]`)) ||
+      (await page.$(`td:not(.off)[data-date="${day}/${month}/${year}"]`));
+
+    if (dateElement) {
+      await dateElement.click();
+      await page.waitForTimeout(500);
+    } else {
+      await page.close();
+      return [];
+    }
+
+    const searchBtn = await page.waitForSelector("#searchSeferButton", {
+      state: "visible",
+    });
+    await searchBtn.click();
+
+    await page.waitForTimeout(2000);
+    await page.waitForSelector(".seferInformationArea");
+
+    const tripButtons = await page.$$('button[id^="gidis"][id*="btn"]');
+    const tripList = [];
+
+    for (const btn of tripButtons) {
+      const text = await btn.innerText();
+      if (text && text.toUpperCase().includes("YHT")) {
+        const id = await btn.getAttribute("id");
+        const tripData = parseTripText(text);
+        tripList.push({
+          id,
+          text,
+          departureStation: tripData.departureStation,
+          arrivalStation: tripData.arrivalStation,
+          departureDate: tripData.date,
+          departureTime: tripData.departureTime,
+        });
       }
     }
 
-    await page.waitForTimeout(2000);
-
-    if (shouldStop(chatId)) return null;
-
-    await page.waitForSelector(".seferInformationArea", { timeout: 20000 });
-
-    const expeditionButtons = await page.$$(`button[id^="gidis"][id$="btn"]`);
-    const expeditionList = [];
-
-    for (const btn of expeditionButtons) {
-      const id = await btn.getAttribute("id");
-      const text = await btn.innerText();
-      const expeditionData = parseExpeditionText(text);
-      expeditionList.push({
-        id,
-        text,
-        departureDate: expeditionData.date,
-        departureTime: expeditionData.departureTime,
-      });
-    }
-
-    return expeditionList;
+    await page.close();
+    return tripList;
   } catch (err) {
-    console.error("getExpeditionList error:", err);
-    return null;
-  } finally {
-    await closeBrowser(chatId);
+    await page.close().catch(() => {});
+    return [];
   }
 }
 
-async function checkSelectedExpedition(
+export async function startMultiTripChecker(
+  userId,
+  searchId,
   from,
   to,
   date,
-  seat,
-  expeditionId,
-  departureDate,
-  departureTime
+  seatClass,
+  tripList,
+  callbacks = {}
 ) {
-  const { browser, context } = await createStealthBrowser(true);
-  const pageLocal = await context.newPage();
+  activeTasks.set(searchId, false);
+  firstCheckDone.set(searchId, false);
+  let hasSentCheckMessage = false;
+  const page = await getPageForSearch(userId, searchId);
 
   try {
-    await pageLocal.goto("https://ebilet.tcddtasimacilik.gov.tr/", {
+    await page.goto("https://ebilet.tcddtasimacilik.gov.tr/", {
       waitUntil: "networkidle",
       timeout: 60000,
     });
-    await pageLocal.waitForTimeout(1000);
 
-    const selectors = [
-      "#fromTrainInput",
-      `#gidis-${from}`,
-      "#toTrainInput",
-      `#donus-${to}`,
-      ".departureDate",
-      `td:not(.off) > [id="${date}"]`,
-      "#searchSeferButton",
-    ];
+    await page.waitForSelector("#fromTrainInput");
+    await page.click("#fromTrainInput");
 
-    for (const selector of selectors) {
-      await pageLocal.waitForSelector(selector, { timeout: 15000 });
-      await pageLocal.click(selector);
-      await pageLocal.waitForTimeout(500);
+    await page.waitForTimeout(100);
+    await page.click(`#gidis-${from}`);
+
+    await page.waitForTimeout(100);
+    await page.click("#toTrainInput");
+
+    await page.waitForTimeout(100);
+    await page.click(`#donus-${to}`);
+
+    await page.waitForTimeout(100);
+    await page.click(".departureDate");
+
+    await page.waitForTimeout(500);
+
+    const [day, month, year] = date.split(" ");
+    const dateElement =
+      (await page.$(`td:not(.off) > [id="${date}"]`)) ||
+      (await page.$(`td:not(.off)[data-date="${day}/${month}/${year}"]`));
+
+    if (dateElement) {
+      await dateElement.click();
+      await page.waitForTimeout(500);
+    } else {
+      await page.close();
+      return [];
     }
 
-    const [day, month, year] = departureDate.split(".");
-    const [hours, minutes] = departureTime.split(":");
-    const expeditionDateObj = new Date(
-      parseInt(year),
-      parseInt(month) - 1,
-      parseInt(day),
-      parseInt(hours),
-      parseInt(minutes),
-      0
-    );
-    const cutoffTime = new Date(expeditionDateObj.getTime() - 15 * 60 * 1000);
-    const now = new Date();
+    const searchBtn = await page.waitForSelector("#searchSeferButton", {
+      state: "visible",
+    });
+    await searchBtn.click();
 
-    if (now.getTime() > cutoffTime.getTime()) {
-      return "EXPIRED";
-    }
+    await page.waitForTimeout(2000);
+    await page.waitForSelector(".seferInformationArea");
 
-    const expeditionButton = await pageLocal.$(`#${expeditionId}`);
-    if (expeditionButton) {
-      const priceText = await expeditionButton.$eval(".price", (el) =>
-        el.innerText.trim().toLowerCase()
-      );
-      if (priceText === "dolu") return false;
-    }
+    while (!activeTasks.get(searchId)) {
+      const isFirstCheck = !firstCheckDone.get(searchId);
+      let anyAvailable = false;
+      const now = new Date();
 
-    await waitForOverlay(pageLocal);
-    await pageLocal.click(`#${expeditionId}`);
-    await pageLocal.waitForTimeout(1000);
-
-    const result = await checkIfSeatAvailable(pageLocal, expeditionId, seat);
-    return result;
-  } catch (err) {
-    console.error("Sefer kontrolünde hata:", err);
-    return false;
-  } finally {
-    await browser.close();
-  }
-}
-
-async function startCheckingLoop(
-  from,
-  to,
-  date,
-  seat,
-  expeditionId,
-  departureDate,
-  departureTime,
-  callbacks = {},
-  chatId
-) {
-  stopCheckingFlags.set(chatId, false);
-  let isFull = false;
-
-  try {
-    while (!stopCheckingFlags.get(chatId)) {
-      const result = await checkSelectedExpedition(
-        from,
-        to,
-        date,
-        seat,
-        expeditionId,
-        departureDate,
-        departureTime
-      );
-      if (stopCheckingFlags.get(chatId)) break;
-
-      if (result === "EXPIRED") {
-        if (callbacks.onExpired) await callbacks.onExpired();
-        break;
+      for (let i = tripList.length - 1; i >= 0; i--) {
+        const trip = tripList[i];
+        const tripDateTime = new Date(`${date} ${trip.departureTime}`);
+        if (tripDateTime < now) {
+          tripList.splice(i, 1);
+          if (callbacks.onTripExpired) await callbacks.onTripExpired(trip);
+        }
       }
 
-      if (result) {
-        if (callbacks.onFound)
-          await callbacks.onFound("🚨 Boş yer açıldı! Hemen kontrol et.");
-        stopCheckingLoop(chatId);
-        break;
-      } else if (!isFull) {
-        isFull = true;
-        if (callbacks.onCheck)
-          await callbacks.onCheck(
-            "❌ Sefer şu anda dolu. Boş yer açılınca haber verilecektir."
-          );
+      if (tripList.length === 0) {
+        if (callbacks.onAllExpired) await callbacks.onAllExpired(searchId);
+        stopChecker(searchId);
+        return;
       }
 
-      await new Promise((r) => setTimeout(r, 10000));
+      for (const trip of [...tripList]) {
+        if (activeTasks.get(searchId)) break;
+
+        const tripDateTime = new Date(`${date} ${trip.departureTime}`);
+        if (tripDateTime < now) continue;
+        
+        const result = await checkSingleTrip(page, trip, seatClass);
+
+        if (result) {
+          anyAvailable = true;
+          if (callbacks.onFound) await callbacks.onFound(trip, searchId);
+          stopChecker(searchId);
+          return;
+        } else if (isFirstCheck && callbacks.onCheck && !hasSentCheckMessage) {
+          await callbacks.onCheck(trip);
+          hasSentCheckMessage = true;
+        }
+      }
+
+      firstCheckDone.set(searchId, true);
+
+      if (!anyAvailable) {
+        const allExpired = tripList.every(
+          (trip) => new Date(`${date} ${trip.departureTime}`) < now
+        );
+        if (allExpired && callbacks.onAllExpired) {
+          await callbacks.onAllExpired(searchId);
+          stopChecker(searchId);
+          return;
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, 15000));
+
+      if (!activeTasks.get(searchId)) {
+        await page.reload({ waitUntil: "networkidle" }).catch(() => {});
+        await page
+          .waitForSelector(".seferInformationArea", { timeout: 10000 })
+          .catch(() => {});
+      }
     }
   } catch (err) {
     if (callbacks.onError) await callbacks.onError(err);
-  } finally {
-    stopCheckingFlags.delete(chatId);
-    await closeBrowser(chatId);
   }
 }
 
-function stopCheckingLoop(chatId) {
-  stopCheckingFlags.set(chatId, true);
-  stopProgressFlags.set(chatId, true);
+async function checkSingleTrip(page, trip, seatClass) {
+  try {
+    let btn;
+    if (trip.id && trip.id !== "") {
+      btn = await page.$(`#${trip.id}`);
+    } else {
+      btn = await page
+        .locator(
+          `.seferInformationArea button:has-text("${trip.departureTime}")`
+        )
+        .first();
+    }
+
+    if (!btn) return false;
+
+    const statusText = await btn.innerText();
+    if (
+      statusText.toUpperCase().includes("DOLU") &&
+      !statusText.toUpperCase().includes("SEÇ")
+    )
+      return false;
+
+    await btn.click();
+    await page.waitForTimeout(1200);
+
+    const targetClass = seatClass.toUpperCase().trim();
+    const classButtons = page.locator(
+      '.collapse.show button, [aria-expanded="true"] + .collapse button'
+    );
+
+    const count = await classButtons.count();
+    let isAvailable = false;
+
+    for (let i = 0; i < count; i++) {
+      const b = classButtons.nth(i);
+      const text = await b.innerText();
+
+      if (text.toUpperCase().includes(targetClass)) {
+        const isDisabled = await b.getAttribute("disabled");
+        if (!text.toUpperCase().includes("DOLU") && isDisabled == null) {
+          isAvailable = true;
+          break;
+        }
+      }
+    }
+
+    if (!isAvailable) {
+      await btn.click().catch(() => {});
+      await page.waitForTimeout(300);
+    }
+
+    return isAvailable;
+  } catch (err) {
+    return false;
+  }
 }
 
-function setStopFlag(chatId) {
-  stopProgressFlags.set(chatId, true);
+export function stopChecker(searchId) {
+  activeTasks.set(searchId, true);
+  closeSearchTab(searchId);
 }
-
-module.exports = {
-  getExpeditionList,
-  closeListBrowser,
-  startCheckingLoop,
-  stopCheckingLoop,
-  setStopFlag,
-};

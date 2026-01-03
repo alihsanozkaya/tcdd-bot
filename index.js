@@ -1,14 +1,6 @@
-require("dotenv").config();
+import dotenv from "dotenv";
+import { startTelegramBot } from "./platforms/telegramBot.js";
 
-const { startTelegramBot } = require("./bots/telegramBot");
-const { startWhatsAppBot } = require("./bots/whatsappBot");
+dotenv.config();
 
-const selectedBot = process.env.BOT_PLATFORM;
-
-if (selectedBot === "telegram") {
-  startTelegramBot();
-} else if (selectedBot === "whatsapp") {
-  startWhatsAppBot();
-} else {
-  console.log("Hatalı BOT_PLATFORM! .env dosyanızda 'telegram' veya 'whatsapp' yazmalısınız.");
-}
+startTelegramBot();

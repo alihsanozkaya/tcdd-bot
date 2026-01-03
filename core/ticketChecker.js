@@ -8,7 +8,10 @@ const firstCheckDone = new Map();
 
 async function getBrowserForUser(userId) {
   if (!userBrowsers.has(userId)) {
-    const browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
     userBrowsers.set(userId, browser);
   }
   return userBrowsers.get(userId);
@@ -195,7 +198,7 @@ export async function startMultiTripChecker(
 
         const tripDateTime = new Date(`${date} ${trip.departureTime}`);
         if (tripDateTime < now) continue;
-        
+
         const result = await checkSingleTrip(page, trip, seatClass);
 
         if (result) {

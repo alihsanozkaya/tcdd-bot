@@ -50,7 +50,7 @@ export async function closeSearchTab(searchId) {
   }
 }
 
-export async function getTripList(userId, from, to, date) {
+export async function getTripList(userId, from, to, date, callbacks = {}) {
   const browser = await getBrowserForUser(userId);
   const page = await browser.newPage();
 
@@ -100,9 +100,14 @@ export async function getTripList(userId, from, to, date) {
       timeout: 20000,
     });
 
-    console.log("📸 Screenshot alınıyor...");
-    await page.screenshot({ path: "/tmp/tcdd.png", fullPage: true });
-    console.log("📸 Screenshot alındı");
+    await page.screenshot({
+      path: `/tmp/tcdd-${userId}.png`,
+      fullPage: true,
+    });
+
+    if (callbacks.onScreenshot) {
+      await callbacks.onScreenshot(`/tmp/tcdd-${userId}.png`);
+    }
 
     const tripButtons = await page.$$(".seferInformationArea button");
     const tripList = [];

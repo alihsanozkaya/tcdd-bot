@@ -5,16 +5,25 @@ const userBrowsers = new Map();
 const activeTabs = new Map();
 const activeTasks = new Map();
 const firstCheckDone = new Map();
+const searchUserMap = new Map();
 
 async function getBrowserForUser(userId) {
   if (!userBrowsers.has(userId)) {
-    browser = await chromium.launch({
+    const browser = await chromium.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     userBrowsers.set(userId, browser);
   }
   return userBrowsers.get(userId);
+}
+
+export async function closeUserBrowser(userId) {
+  const browser = userBrowsers.get(userId);
+  if (browser) {
+    await browser.close().catch(() => {});
+    userBrowsers.delete(userId);
+  }
 }
 
 async function getPageForSearch(userId, searchId) {
@@ -124,6 +133,7 @@ export async function startMultiTripChecker(
   tripList,
   callbacks = {}
 ) {
+  searchUserMap.set(searchId, userId);
   activeTasks.set(searchId, false);
   firstCheckDone.set(searchId, false);
   let hasSentCheckMessage = false;
@@ -189,7 +199,7 @@ export async function startMultiTripChecker(
 
       if (tripList.length === 0) {
         if (callbacks.onAllExpired) await callbacks.onAllExpired(searchId);
-        stopChecker(searchId);
+        await stopChecker(searchId);
         return;
       }
 
@@ -204,7 +214,7 @@ export async function startMultiTripChecker(
         if (result) {
           anyAvailable = true;
           if (callbacks.onFound) await callbacks.onFound(trip, searchId);
-          stopChecker(searchId);
+          await stopChecker(searchId);
           return;
         } else if (isFirstCheck && callbacks.onCheck && !hasSentCheckMessage) {
           await callbacks.onCheck(trip);
@@ -220,7 +230,7 @@ export async function startMultiTripChecker(
         );
         if (allExpired && callbacks.onAllExpired) {
           await callbacks.onAllExpired(searchId);
-          stopChecker(searchId);
+          await stopChecker(searchId);
           return;
         }
       }
@@ -296,7 +306,14 @@ async function checkSingleTrip(page, trip, seatClass) {
   }
 }
 
-export function stopChecker(searchId) {
+export async function stopChecker(searchId) {
   activeTasks.set(searchId, true);
-  closeSearchTab(searchId);
+
+  await closeSearchTab(searchId);
+
+  const userId = searchUserMap.get(searchId);
+  if (userId) {
+    await closeUserBrowser(userId);
+    searchUserMap.delete(searchId);
+  }
 }

@@ -352,7 +352,7 @@ export const startTelegramBot = () => {
         for (const search of state.searches) {
           try {
             await stopSearch(search._id);
-            stopChecker(search._id);
+            await stopChecker(search._id);
           } catch (e) {
             console.error("Stop error:", search._id, e);
           }
@@ -388,7 +388,7 @@ export const startTelegramBot = () => {
         }
 
         await stopSearch(searchId);
-        stopChecker(searchId);
+        await stopChecker(searchId);
         clearState(chatId);
 
         await bot.editMessageText(

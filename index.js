@@ -1,16 +1,18 @@
-import http from "http";
 import dotenv from "dotenv";
+import express from "express";
 import { startTelegramBot } from "./platforms/telegramBot.js";
 
 dotenv.config();
 
-const server = http.createServer((req, res) => {
-  if (req.url === "/") {
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("Bot is running");
-  }
+startTelegramBot();
+
+const app = express();
+
+app.get("/", (req, res) => {
+  res.status(200).send("Bot çalışıyor...");
 });
 
-server.listen(process.env.PORT || 3000);
-
-startTelegramBot();
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Bot başladı ${PORT}`);
+});

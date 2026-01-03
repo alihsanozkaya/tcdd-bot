@@ -1,4 +1,3 @@
-process.env.PLAYWRIGHT_BROWSERS_PATH = "0";
 import dotenv from "dotenv";
 import express from "express";
 import { startTelegramBot } from "./platforms/telegramBot.js";

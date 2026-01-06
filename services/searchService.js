@@ -42,7 +42,7 @@ export const createSearch = async ({
       travelDate,
       tripList,
     });
-    return res;
+    return res.data;
   } catch (err) {
     if (err.response) {
       const status = err.response.status;
@@ -58,7 +58,7 @@ export const createSearch = async ({
 export const foundSearch = async (id) => {
   try {
     const res = await axios.post(`${API_URL}${basePath}/foundSearch`, { id });
-    return res;
+    return res.data;
   } catch (err) {
     console.error(err.message);
     return null;
@@ -68,7 +68,7 @@ export const foundSearch = async (id) => {
 export const stopSearch = async (id) => {
   try {
     const res = await axios.post(`${API_URL}${basePath}/stopSearch`, { id });
-    return res;
+    return res.data;
   } catch (err) {
     console.error(err.message);
     return null;
@@ -80,7 +80,7 @@ export const stopErrorSearch = async (id) => {
     const res = await axios.post(`${API_URL}${basePath}/stopErrorSearch`, {
       id,
     });
-    return res;
+    return res.data;
   } catch (err) {
     console.error(err.message);
     return null;
@@ -90,7 +90,7 @@ export const stopErrorSearch = async (id) => {
 export const stopExpiredSearches = async () => {
   try {
     const res = await axios.post(`${API_URL}${basePath}/stopExpired`);
-    return res;
+    return res.data;
   } catch (err) {
     console.error(err.message);
     return null;
@@ -102,7 +102,7 @@ export const refreshSearchTripList = async (id) => {
     const res = await axios.post(`${API_URL}${basePath}/refreshSearchTrips`, {
       id,
     });
-    return res;
+    return res.data;
   } catch (err) {
     console.error(err.message);
     return null;

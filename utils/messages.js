@@ -48,6 +48,7 @@ export const startMessage =
   "⛔ /durdur\n" +
   "— Devam eden kontrolü sonlandırır.\n\n" +
   "İyi yolculuklar dileriz 🚆";
+export const startSystem = "Sistem başlatılıyor, lütfen 10 saniye sonra tekrar deneyiniz.";
 export const stopAllSearch = "⛔ TÜM ARAMALARI DURDUR";
 export const stopListError = "❌ Durdurma listesi alınamadı!";
 export const transactionHasCancelled = "❌ İşlem iptal edildi.";

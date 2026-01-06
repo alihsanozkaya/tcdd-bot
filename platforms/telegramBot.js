@@ -44,9 +44,7 @@ const clearState = (chatId) => {
 setInterval(() => {
   const now = Date.now();
   for (const [chatId, state] of tempStates) {
-    if (now - state.updatedAt > STATE_TTL) {
-      tempStates.delete(chatId);
-    }
+    if (now - state.updatedAt > STATE_TTL) tempStates.delete(chatId);
   }
 }, 5 * 60 * 1000);
 //#endregion
@@ -86,18 +84,19 @@ export const startTelegramBot = () => {
       STATIONS_CACHE = await getAllStations();
       SEATS_CACHE = await getAllSteats();
 
+      const stationMap = new Map(STATIONS_CACHE.map((s) => [s.code, s.name]));
+
       for (const search of activeSearches) {
         const chatId = await getChatIdByUserId(search.userId);
-        const tripList = await getTripList(
-          search.userId,
-          search.fromStationCode,
-          search.toStationCode,
-          search.travelDate
-        );
 
-        const tripsToCheck = tripList.filter((exp) =>
-          search.tripList.includes(exp.departureTime)
-        );
+        const fromName = stationMap.get(search.fromStationCode);
+        const toName = stationMap.get(search.toStationCode);
+        const travelDate = search.travelDate;
+
+        const tripsToCheck = search.tripList.map((t) => ({
+          tripId: t.tripId,
+          departureTime: t.departureTime,
+        }));
 
         startMultiTripChecker(
           search.userId,
@@ -112,20 +111,19 @@ export const startTelegramBot = () => {
               await bot.sendMessage(
                 chatId,
                 `🎉 YER BULUNDU!\n\n` +
-                  `🚉 ${trip.departureStation} → ${trip.arrivalStation}\n\n` +
-                  `📅 Tarih: ${trip.departureDate}\n` +
+                  `🚉 ${fromName} → ${toName}\n\n` +
+                  `📅 Tarih: ${travelDate}\n` +
                   `⏱️ Saat: ${trip.departureTime}\n` +
                   `🔗 https://ebilet.tcddtasimacilik.gov.tr/`
               );
               await foundSearch(searchId);
             },
             onTripExpired: async (trip) => {
-              const time = typeof trip == "string" ? trip : trip.departureTime;
               await bot.sendMessage(
                 chatId,
-                `⏰ ${time} seferinin süresi geçti.`
+                `⏰ ${trip.departureTime} seferinin süresi geçti.`
               );
-              await refreshSearchTripList(search.data._id);
+              await refreshSearchTripList(search._id);
             },
             onAllExpired: async () => {
               await bot.sendMessage(chatId, MSG.isTripExpired);
@@ -134,7 +132,7 @@ export const startTelegramBot = () => {
             onError: async (err) => {
               console.error(err);
               await bot.sendMessage(chatId, MSG.errorOccurred);
-              await stopErrorSearch(search.data._id);
+              await stopErrorSearch(search._id);
             },
           }
         );
@@ -162,6 +160,9 @@ export const startTelegramBot = () => {
     const chatId = msg.chat.id;
     const telegramId = msg.from.id;
     try {
+      if (!STATIONS_CACHE || !SEATS_CACHE)
+        return bot.sendMessage(msg.chat.id, MSG.startSystem);
+
       const user = await findOrCreateUser(telegramId);
       const searches = await getActiveSearchesByUser(user._id);
 
@@ -175,6 +176,7 @@ export const startTelegramBot = () => {
         step: "from",
         selectedTrips: [],
       });
+
       await bot.sendMessage(
         chatId,
         MSG.departureMessage,
@@ -215,9 +217,7 @@ export const startTelegramBot = () => {
       const user = await findOrCreateUser(msg.from.id);
       const searches = await getActiveSearchesByUser(user._id);
 
-      if (!searches.length) {
-        return bot.sendMessage(chatId, MSG.noActiveSearch);
-      }
+      if (!searches.length) return bot.sendMessage(chatId, MSG.noActiveSearch);
 
       setState(chatId, {
         step: "stop-inline",
@@ -229,12 +229,9 @@ export const startTelegramBot = () => {
       );
 
       const buttons = searches.map((search, i) => {
-        const times = search.tripList.join(", ");
-
-        const fromName =
-          stationMap.get(search.fromStationCode) || search.fromStationCode;
-        const toName =
-          stationMap.get(search.toStationCode) || search.toStationCode;
+        const fromName = stationMap.get(search.fromStationCode);
+        const toName = stationMap.get(search.toStationCode);
+        const times = search.tripList.map((t) => t.departureTime).join(", ");
 
         return [
           {
@@ -348,7 +345,7 @@ export const startTelegramBot = () => {
 
         await bot.sendMessage(chatId, MSG.enterDate);
       }
-      if (data === "stop_all") {
+      if (data == "stop_all") {
         for (const search of state.searches) {
           try {
             await stopSearch(search._id);
@@ -367,7 +364,7 @@ export const startTelegramBot = () => {
 
         await bot.answerCallbackQuery(query.id);
         return;
-      } else if (data === "cancel") {
+      } else if (data == "cancel") {
         clearState(chatId);
 
         await bot.editMessageText(MSG.searchesContinue, {
@@ -391,11 +388,19 @@ export const startTelegramBot = () => {
         await stopChecker(searchId);
         clearState(chatId);
 
+        const stationMap = new Map(
+          STATIONS_CACHE.map((st) => [st.code, st.name])
+        );
+
+        const fromName = stationMap.get(search.fromStationCode);
+        const toName = stationMap.get(search.toStationCode);
+        const times = search.tripList.map((t) => t.departureTime).join(", ");
+
         await bot.editMessageText(
           `🛑 Arama durduruldu:\n\n` +
-            `🚉 ${search.fromStationCode} → ${search.toStationCode}\n` +
+            `🚉 ${fromName} → ${toName}\n` +
             `📅 Tarih: ${search.travelDate}\n` +
-            `⏰ Saatler: ${search.tripList.join(", ")}`,
+            `⏰ Saatler: ${times}`,
           {
             chat_id: chatId,
             message_id: query.message.message_id,
@@ -501,7 +506,10 @@ export const startTelegramBot = () => {
           return;
         }
 
-        const selectedTrips = selections.map((idx) => state.tripList[idx - 1]);
+        const selectedTrips = selections.map((idx) => ({
+          tripId: state.tripList[idx - 1].tripId,
+          departureTime: state.tripList[idx - 1].departureTime,
+        }));
 
         setState(chatId, {
           ...state,
@@ -525,6 +533,9 @@ export const startTelegramBot = () => {
 
 //#region StartSearchProcess
 async function startSearchProcess(bot, chatId, state) {
+  const fromName = state.fromName;
+  const toName = state.toName;
+  const travelDate = state.date;
   try {
     const user = await findOrCreateUser(state.telegramId);
 
@@ -536,32 +547,29 @@ async function startSearchProcess(bot, chatId, state) {
         toStationCode: state.to,
         seatType: state.seatId,
         travelDate: state.date,
-        tripList: state.selectedTrips.map((t) => t.departureTime),
+        tripList: state.selectedTrips,
       });
     } catch (err) {
-      if (err.status === 409) {
-        await bot.sendMessage(chatId, `⚠️ ${err.message}`);
-        return;
+      if (err.status == 409) {
+        return await bot.sendMessage(chatId, `⚠️ ${err.message}`);
       }
-      await bot.sendMessage(chatId, MSG.notSearchSave);
-      return;
+      return await bot.sendMessage(chatId, MSG.notSearchSave);
     }
 
-    if (!search || !search.data) {
-      await bot.sendMessage(chatId, MSG.notSearchSave);
-      return;
+    if (!search || !search._id) {
+      return await bot.sendMessage(chatId, MSG.notSearchSave);
     }
 
     await bot.sendMessage(
       chatId,
       `🚀 Arama başlatıldı!\n\n` +
         `🚂 ${state.selectedTrips.length} sefer izleniyor\n` +
-        `⏱️ Yer bulunca size buradan haber vereceğim.`
+        `⏱️ Yer bulunca size buradan haber verilecektir.`
     );
 
     startMultiTripChecker(
       user._id,
-      search.data._id,
+      search._id,
       state.from,
       state.to,
       state.date,
@@ -572,8 +580,8 @@ async function startSearchProcess(bot, chatId, state) {
           await bot.sendMessage(
             chatId,
             `🎉 YER BULUNDU!\n\n` +
-              `🚉 ${trip.departureStation} → ${trip.arrivalStation}\n\n` +
-              `📅 Tarih: ${trip.departureDate}\n` +
+              `🚉 ${fromName} → ${toName}\n\n` +
+              `📅 Tarih: ${travelDate}\n` +
               `⏱️ Saat: ${trip.departureTime}\n` +
               `🔗 https://ebilet.tcddtasimacilik.gov.tr/`
           );
@@ -583,9 +591,11 @@ async function startSearchProcess(bot, chatId, state) {
           await bot.sendMessage(chatId, MSG.tripIsFull);
         },
         onTripExpired: async (trip) => {
-          const time = typeof trip == "string" ? trip : trip.departureTime;
-          await bot.sendMessage(chatId, `⏰ ${time} seferinin süresi geçti.`);
-          await refreshSearchTripList(search.data._id);
+          await bot.sendMessage(
+            chatId,
+            `⏰ ${trip.departureTime} seferinin süresi geçti.`
+          );
+          await refreshSearchTripList(search._id);
         },
         onAllExpired: async () => {
           await bot.sendMessage(chatId, MSG.isTripExpired);
@@ -594,7 +604,7 @@ async function startSearchProcess(bot, chatId, state) {
         onError: async (err) => {
           console.error(err);
           await bot.sendMessage(chatId, MSG.errorOccurred);
-          await stopErrorSearch(search.data._id);
+          await stopErrorSearch(search._id);
         },
       }
     );

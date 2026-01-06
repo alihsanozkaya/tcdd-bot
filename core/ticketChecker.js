@@ -1,30 +1,41 @@
 import { chromium } from "playwright";
 import { parseTripText } from "../utils/formatter.js";
 
+//#region STATE MANAGEMENT
 const userBrowsers = new Map();
 const activeTabs = new Map();
 const activeTasks = new Map();
 const firstCheckDone = new Map();
 const searchUserMap = new Map();
+//#endregion
 
+//#region Browser açma
 async function getBrowserForUser(userId) {
   if (!userBrowsers.has(userId)) {
     const browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      headless: false,
+      args: [
+        "--disable-blink-features=AutomationControlled",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-gpu",
+      ],
     });
     userBrowsers.set(userId, browser);
   }
   return userBrowsers.get(userId);
 }
+//#endregion
 
+//#region Browser kapatma
 export async function closeUserBrowser(userId) {
   const browser = userBrowsers.get(userId);
   if (browser) {
-    await browser.close().catch(() => {});
+    await browser.close();
     userBrowsers.delete(userId);
   }
 }
+//#endregion
 
 async function getPageForSearch(userId, searchId) {
   if (!activeTabs.has(searchId)) {
@@ -43,7 +54,7 @@ async function getPageForSearch(userId, searchId) {
 export async function closeSearchTab(searchId) {
   const page = activeTabs.get(searchId);
   if (page) {
-    await page.close().catch(() => {});
+    await page.close();
     activeTabs.delete(searchId);
   }
 }
@@ -94,32 +105,47 @@ export async function getTripList(userId, from, to, date) {
     await searchBtn.click();
 
     await page.waitForTimeout(2000);
-    await page.waitForSelector(".seferInformationArea");
-
-    const tripButtons = await page.$$('button[id^="gidis"][id*="btn"]');
+    await page.waitForSelector(".seferInformationArea", { timeout: 30000 });
+    await page.waitForTimeout(2000);
+    const tripCards = await page.$$(".card");
     const tripList = [];
 
-    for (const btn of tripButtons) {
-      const text = await btn.innerText();
-      if (text && text.toUpperCase().includes("YHT")) {
-        const id = await btn.getAttribute("id");
-        const tripData = parseTripText(text);
-        tripList.push({
-          id,
-          text,
-          departureStation: tripData.departureStation,
-          arrivalStation: tripData.arrivalStation,
-          departureDate: tripData.date,
-          departureTime: tripData.departureTime,
-        });
+    for (const card of tripCards) {
+      try {
+        const header = await card.$(".card-header");
+        if (!header) continue;
+
+        const tripId = await header.getAttribute("id");
+        if (!tripId || !tripId.includes("sefer")) continue;
+
+        const btn = await header.$("button");
+        if (!btn) continue;
+
+        const text = await btn.innerText();
+
+        if (text && text.toUpperCase().includes("YHT") && !text.toUpperCase().includes("ANAHAT")) {
+          const tripData = parseTripText(text);
+
+          tripList.push({
+            tripId: tripId,
+            departureTime: tripData.departureTime,
+            departureStation: tripData.departureStation,
+            arrivalStation: tripData.arrivalStation,
+            departureDate: date,
+            text: text.trim(),
+          });
+        }
+      } catch (cardErr) {
+        console.error("Kart okunurken hata:", cardErr);
+        continue;
       }
     }
 
-    await page.close();
     return tripList;
   } catch (err) {
-    await page.close().catch(() => {});
     return [];
+  } finally {
+    if (page) await page.close();
   }
 }
 
@@ -190,14 +216,19 @@ export async function startMultiTripChecker(
 
       for (let i = tripList.length - 1; i >= 0; i--) {
         const trip = tripList[i];
-        const tripDateTime = new Date(`${date} ${trip.departureTime}`);
+
+        const [d, m, y] = date.split(" ");
+        const tripDateTime = new Date(
+          `${y}-${m}-${d}T${trip.departureTime}:00`
+        );
+
         if (tripDateTime < now) {
           tripList.splice(i, 1);
           if (callbacks.onTripExpired) await callbacks.onTripExpired(trip);
         }
       }
 
-      if (tripList.length === 0) {
+      if (tripList.length == 0) {
         if (callbacks.onAllExpired) await callbacks.onAllExpired(searchId);
         await stopChecker(searchId);
         return;
@@ -246,61 +277,45 @@ export async function startMultiTripChecker(
     }
   } catch (err) {
     if (callbacks.onError) await callbacks.onError(err);
+    await stopChecker(searchId);
   }
 }
 
 async function checkSingleTrip(page, trip, seatClass) {
   try {
-    let btn;
-    if (trip.id && trip.id !== "") {
-      btn = await page.$(`#${trip.id}`);
-    } else {
-      btn = await page
-        .locator(
-          `.seferInformationArea button:has-text("${trip.departureTime}")`
-        )
-        .first();
+    const header = await page.$(`[id="${trip.tripId}"]`);
+    if (!header) return false;
+
+    const btn = await header.$("button");
+    const isExpanded = await btn.getAttribute("aria-expanded");
+    if (isExpanded !== "true") {
+      await header.click();
+      const numericId = trip.tripId.replace("sefer", "");
+      await page
+        .waitForSelector(`#collapse${numericId}.show`, { timeout: 2000 })
+        .catch(() => {});
     }
 
-    if (!btn) return false;
-
-    const statusText = await btn.innerText();
-    if (
-      statusText.toUpperCase().includes("DOLU") &&
-      !statusText.toUpperCase().includes("SEÇ")
-    )
-      return false;
-
-    await btn.click();
-    await page.waitForTimeout(1200);
-
     const targetClass = seatClass.toUpperCase().trim();
-    const classButtons = page.locator(
-      '.collapse.show button, [aria-expanded="true"] + .collapse button'
+    const numericOnly = trip.tripId.replace(/\D/g, "");
+
+    const vagonButtons = await page.$$(
+      `button[id*="${numericOnly}"][id*="vagonType"]`
     );
 
-    const count = await classButtons.count();
-    let isAvailable = false;
+    for (const vagonBtn of vagonButtons) {
+      const vagonText = (await vagonBtn.innerText()).toUpperCase();
 
-    for (let i = 0; i < count; i++) {
-      const b = classButtons.nth(i);
-      const text = await b.innerText();
+      if (vagonText.includes(targetClass)) {
+        const isDisabled = await vagonBtn.getAttribute("disabled");
+        const isFull = vagonText.includes("DOLU") || vagonText.includes("(0)");
 
-      if (text.toUpperCase().includes(targetClass)) {
-        const isDisabled = await b.getAttribute("disabled");
-        if (!text.toUpperCase().includes("DOLU") && isDisabled == null) {
-          isAvailable = true;
-          break;
+        if (isDisabled == null && !isFull) {
+          return true;
         }
       }
     }
-
-    if (!isAvailable) {
-      await btn.click().catch(() => {});
-      await page.waitForTimeout(300);
-    }
-
-    return isAvailable;
+    return false;
   } catch (err) {
     return false;
   }
@@ -312,8 +327,15 @@ export async function stopChecker(searchId) {
   await closeSearchTab(searchId);
 
   const userId = searchUserMap.get(searchId);
+  searchUserMap.delete(searchId);
+
   if (userId) {
-    await closeUserBrowser(userId);
-    searchUserMap.delete(searchId);
+    const userSearches = [...searchUserMap.entries()].filter(
+      ([id, uid]) => uid == userId
+    );
+
+    if (userSearches.length == 0) {
+      await closeUserBrowser(userId);
+    }
   }
 }

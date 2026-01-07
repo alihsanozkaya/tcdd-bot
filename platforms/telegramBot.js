@@ -75,7 +75,15 @@ const seatButtons = (seats) => ({
 
 //#region BOT START
 export const startTelegramBot = () => {
-  const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
+  const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, {
+    polling: {
+      interval: 3000,
+      autoStart: true,
+      params: {
+        timeout: 20,
+      },
+    },
+  });
 
   (async () => {
     try {

@@ -123,7 +123,11 @@ export async function getTripList(userId, from, to, date) {
 
         const text = await btn.innerText();
 
-        if (text && text.toUpperCase().includes("YHT") && !text.toUpperCase().includes("ANAHAT")) {
+        if (
+          text &&
+          text.toUpperCase().includes("YHT") &&
+          !text.toUpperCase().includes("ANAHAT")
+        ) {
           const tripData = parseTripText(text);
 
           tripList.push({
@@ -269,9 +273,14 @@ export async function startMultiTripChecker(
       await new Promise((r) => setTimeout(r, 120000));
 
       if (!activeTasks.get(searchId)) {
-        await page.reload({ waitUntil: "networkidle" }).catch(() => {});
+        await page.evaluate(() => {
+          location.reload(true);
+        });
+
+        await page.waitForLoadState("domcontentloaded");
+
         await page
-          .waitForSelector(".seferInformationArea", { timeout: 10000 })
+          .waitForSelector(".seferInformationArea", { timeout: 20000 })
           .catch(() => {});
       }
     }
@@ -286,21 +295,31 @@ async function checkSingleTrip(page, trip, seatClass) {
     const header = await page.$(`[id="${trip.tripId}"]`);
     if (!header) return false;
 
-    const btn = await header.$("button");
-    const isExpanded = await btn.getAttribute("aria-expanded");
-    if (isExpanded !== "true") {
-      await header.click();
-      const numericId = trip.tripId.replace("sefer", "");
+    const toggleBtn = await header.$("button");
+    if (!toggleBtn) return false;
+
+    const numericId = trip.tripId.replace(/\D/g, "");
+    const collapseSelector = `#collapse${numericId}`;
+
+    const isOpen = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      return el && el.classList.contains("show");
+    }, collapseSelector);
+
+    if (!isOpen) {
+      await toggleBtn.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(120);
+      await toggleBtn.click({ force: true });
+
       await page
-        .waitForSelector(`#collapse${numericId}.show`, { timeout: 2000 })
+        .waitForSelector(`${collapseSelector}.show`, { timeout: 3000 })
         .catch(() => {});
     }
 
     const targetClass = seatClass.toUpperCase().trim();
-    const numericOnly = trip.tripId.replace(/\D/g, "");
 
     const vagonButtons = await page.$$(
-      `button[id*="${numericOnly}"][id*="vagonType"]`
+      `button[id*="${numericId}"][id*="vagonType"]`
     );
 
     for (const vagonBtn of vagonButtons) {
@@ -310,9 +329,7 @@ async function checkSingleTrip(page, trip, seatClass) {
         const isDisabled = await vagonBtn.getAttribute("disabled");
         const isFull = vagonText.includes("DOLU") || vagonText.includes("(0)");
 
-        if (isDisabled == null && !isFull) {
-          return true;
-        }
+        if (isDisabled == null && !isFull) return true;
       }
     }
     return false;

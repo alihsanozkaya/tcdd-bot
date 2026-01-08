@@ -93,6 +93,9 @@ export const startTelegramBot = () => {
       SEATS_CACHE = await getAllSteats();
 
       const stationMap = new Map(STATIONS_CACHE.map((s) => [s.code, s.name]));
+      const seatMap = new Map(
+        SEATS_CACHE.map((s) => [s._id.toString(), s.name])
+      );
 
       for (const search of activeSearches) {
         const chatId = await getChatIdByUserId(search.userId);
@@ -100,7 +103,7 @@ export const startTelegramBot = () => {
         const fromName = stationMap.get(search.fromStationCode);
         const toName = stationMap.get(search.toStationCode);
         const travelDate = search.travelDate;
-
+        const seatName = seatMap.get(search.seatType?.toString());
         const tripsToCheck = search.tripList.map((t) => ({
           tripId: t.tripId,
           departureTime: t.departureTime,
@@ -112,7 +115,7 @@ export const startTelegramBot = () => {
           search.fromStationCode,
           search.toStationCode,
           search.travelDate,
-          search.seatType,
+          seatName,
           tripsToCheck,
           {
             onFound: async (trip, searchId) => {
@@ -147,6 +150,7 @@ export const startTelegramBot = () => {
       }
     } catch (err) {
       console.error("[Kurtarma Hatası]:", err);
+      return true;
     }
   })();
 
@@ -442,14 +446,26 @@ export const startTelegramBot = () => {
 
         const [day, month, year] = text.split(" ").map(Number);
         const inputDate = new Date(year, month - 1, day);
+
+        if (
+          inputDate.getFullYear() !== year ||
+          inputDate.getMonth() !== month - 1 ||
+          inputDate.getDate() !== day
+        )
+          return await bot.sendMessage(chatId, MSG.enteredAnInvalidDate);
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         if (inputDate < today)
           return await bot.sendMessage(chatId, MSG.notPastDate);
 
-        const maxDate = new Date(today);
-        maxDate.setMonth(maxDate.getMonth() + 2);
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+
+        const maxDate = new Date(currentYear, currentMonth + 2, 0);
+        maxDate.setHours(23, 59, 59, 999);
+
         if (inputDate > maxDate)
           return await bot.sendMessage(chatId, MSG.selectMaxDate);
 
@@ -524,9 +540,13 @@ export const startTelegramBot = () => {
           selectedTrips,
         });
 
-        await startSearchProcess(bot, chatId, getState(chatId));
+        const finished = await startSearchProcess(
+          bot,
+          chatId,
+          getState(chatId)
+        );
 
-        clearState(chatId);
+        if (finished) clearState(chatId);
       }
     } catch (err) {
       console.error(err);
@@ -559,13 +579,25 @@ async function startSearchProcess(bot, chatId, state) {
       });
     } catch (err) {
       if (err.status == 409) {
-        return await bot.sendMessage(chatId, `⚠️ ${err.message}`);
+        await bot.sendMessage(chatId, `⚠️ ${err.message}.`);
+        await bot.sendMessage(chatId, MSG.pleaseReEnter);
+
+        setState(chatId, {
+          ...state,
+          selectedTrips: [],
+          step: "trip",
+        });
+
+        return false;
       }
-      return await bot.sendMessage(chatId, MSG.notSearchSave);
+
+      await bot.sendMessage(chatId, MSG.notSearchSave);
+      return true;
     }
 
     if (!search || !search._id) {
-      return await bot.sendMessage(chatId, MSG.notSearchSave);
+      await bot.sendMessage(chatId, MSG.notSearchSave);
+      return true;
     }
 
     await bot.sendMessage(
@@ -619,6 +651,8 @@ async function startSearchProcess(bot, chatId, state) {
   } catch (err) {
     console.error("startSearchProcess error:", err);
     await bot.sendMessage(chatId, MSG.searchFailed);
+    return true;
   }
+  return true;
 }
 //#endregion

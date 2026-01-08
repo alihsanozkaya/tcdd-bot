@@ -11,6 +11,7 @@ export const duplicateSelections =
   "⚠️ Aynı seferi birden fazla seçemezsiniz.\n" +
   "Lütfen her seferi sadece 1 kez seçiniz.\n\n" +
   "Örnek: 1,3,5";
+export const enteredAnInvalidDate = "❌ Geçersiz tarih girdiniz.";
 export const enterDate = "📅 Tarih giriniz (gg aa yyyy):";
 export const errorOccurred =
   "❗ Kontrol sırasında hata oluştu. Arama durduruldu.";
@@ -31,11 +32,14 @@ export const notTripFound =
   "• Tarih doğru mu?\n" +
   "• İstasyonlar doğru mu?\n" +
   "• O tarihte sefer var mı?";
+export const pleaseReEnter =
+  "Lütfen sefer numaralarını tekrar giriniz (örn: 1,3)";
 export const requiredTrip = "⚠️ En az 1 sefer seçmelisiniz.";
 export const searchFailed = "❌ Arama başlatılamadı!";
 export const searchNotFound = "❌ Arama bulunamadı!";
-export const searchesContinue = "👀 Aktif aramalar devam ediyor."
-export const selectMaxDate = "⚠️ Maksimum 2 ay ilerisini seçebilirsiniz.";
+export const searchesContinue = "👀 Aktif aramalar devam ediyor.";
+export const selectMaxDate =
+  "⚠️ En fazla bir sonraki ay için tarih seçebilirsiniz.";
 export const selectSeatClass = "💺 Koltuk sınıfını seçiniz:";
 export const selectStopSearch = "🛑 Durdurmak istediğiniz aramayı seçiniz:";
 export const startMessage =
@@ -48,7 +52,8 @@ export const startMessage =
   "⛔ /durdur\n" +
   "— Devam eden kontrolü sonlandırır.\n\n" +
   "İyi yolculuklar dileriz 🚆";
-export const startSystem = "Sistem başlatılıyor, lütfen 10 saniye sonra tekrar deneyiniz.";
+export const startSystem =
+  "Sistem başlatılıyor, lütfen 10 saniye sonra tekrar deneyiniz.";
 export const stopAllSearch = "⛔ TÜM ARAMALARI DURDUR";
 export const stopListError = "❌ Durdurma listesi alınamadı!";
 export const transactionHasCancelled = "❌ İşlem iptal edildi.";

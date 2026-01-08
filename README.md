@@ -12,8 +12,8 @@ Bu proje, [Playwright](https://playwright.dev/) kullanarak TCDD'nin bilet kontro
 1. Bu repoyu bilgisayarınıza klonlayın veya zip olarak indirin:
 
    ```bash
-   git clone https://github.com/kullaniciadi/TCDD-Bilet-Kontrol.git
-   cd TCDD-Bilet-Kontrol
+   git clone https://github.com/alihsanozkaya/tcdd-bot.git
+   cd tcdd-bot
    ```
 
 2. 

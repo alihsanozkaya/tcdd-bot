@@ -469,6 +469,8 @@ export const startTelegramBot = () => {
         if (inputDate > maxDate)
           return await bot.sendMessage(chatId, MSG.selectMaxDate);
 
+        await bot.sendMessage(chatId, MSG.tripAreListed);
+
         const user = await findOrCreateUser(state.telegramId);
         const list = await getTripList(user._id, state.from, state.to, text);
 
@@ -483,7 +485,6 @@ export const startTelegramBot = () => {
           tripList: list,
           step: "trip",
         });
-        await bot.sendMessage(chatId, MSG.listingMessage);
 
         let msgText = "📅 Sefer Listesi:\n\n";
         list.forEach((e, i) => (msgText += formatTripistItem(e, i) + "\n"));

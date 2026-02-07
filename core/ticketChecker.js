@@ -161,7 +161,7 @@ export async function startMultiTripChecker(
   date,
   seatClass,
   tripList,
-  callbacks = {}
+  callbacks = {},
 ) {
   searchUserMap.set(searchId, userId);
   activeTasks.set(searchId, false);
@@ -221,10 +221,7 @@ export async function startMultiTripChecker(
       for (let i = tripList.length - 1; i >= 0; i--) {
         const trip = tripList[i];
 
-        const [d, m, y] = date.split(" ");
-        const tripDateTime = new Date(
-          `${y}-${m}-${d}T${trip.departureTime}:00`
-        );
+        const tripDateTime = buildTripDateTime(date, trip.departureTime);
 
         if (tripDateTime < now) {
           tripList.splice(i, 1);
@@ -241,7 +238,7 @@ export async function startMultiTripChecker(
       for (const trip of [...tripList]) {
         if (activeTasks.get(searchId)) break;
 
-        const tripDateTime = new Date(`${date} ${trip.departureTime}`);
+        const tripDateTime = buildTripDateTime(date, trip.departureTime);
         if (tripDateTime < now) continue;
 
         const result = await checkSingleTrip(page, trip, seatClass);
@@ -261,8 +258,9 @@ export async function startMultiTripChecker(
 
       if (!anyAvailable) {
         const allExpired = tripList.every(
-          (trip) => new Date(`${date} ${trip.departureTime}`) < now
+          (trip) => buildTripDateTime(date, trip.departureTime) < now,
         );
+
         if (allExpired && callbacks.onAllExpired) {
           await callbacks.onAllExpired(searchId);
           await stopChecker(searchId);
@@ -319,7 +317,7 @@ async function checkSingleTrip(page, trip, seatClass) {
     const targetClass = seatClass.toUpperCase().trim();
 
     const vagonButtons = await page.$$(
-      `button[id*="${numericId}"][id*="vagonType"]`
+      `button[id*="${numericId}"][id*="vagonType"]`,
     );
 
     for (const vagonBtn of vagonButtons) {
@@ -348,11 +346,18 @@ export async function stopChecker(searchId) {
 
   if (userId) {
     const userSearches = [...searchUserMap.entries()].filter(
-      ([id, uid]) => uid == userId
+      ([id, uid]) => uid == userId,
     );
 
     if (userSearches.length == 0) {
       await closeUserBrowser(userId);
     }
   }
+}
+
+function buildTripDateTime(dateStr, timeStr) {
+  const [day, month, year] = dateStr.split(" ").map(Number);
+  const [hour, minute] = timeStr.split(":").map(Number);
+
+  return new Date(year, month - 1, day, hour, minute, 0, 0);
 }

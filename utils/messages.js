@@ -22,7 +22,6 @@ export const invalidDate =
 export const isTripExpired =
   "⚠️ Tüm seferlerin süresi geçti. Arama durduruldu.";
 export const listeleError = "❌ listele yüklenemedi!";
-export const listingMessage = "🔍 Seferler listeleniyor...";
 export const noActiveSearch = "📭 Aktif aramanız bulunmuyor.";
 export const notPastDate = "⚠️ Geçmiş tarih seçilemez.";
 export const notSearchSave = "❌ Arama kaydedilemedi!";
@@ -58,5 +57,6 @@ export const stopAllSearch = "⛔ TÜM ARAMALARI DURDUR";
 export const stopListError = "❌ Durdurma listesi alınamadı!";
 export const transactionHasCancelled = "❌ İşlem iptal edildi.";
 export const transactionHasExpired = "❗ İşlem süresi doldu!";
+export const tripAreListed = "🔍 Seferler listeleniyor, lütfen bekleyiniz...";
 export const tripIsFull =
   "❌ Seçili seferler şu anda dolu. Her 2 dakikada bir kontrol ediliyor...";

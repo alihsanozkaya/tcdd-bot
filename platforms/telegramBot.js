@@ -600,13 +600,23 @@ export const startTelegramBot = () => {
 
         await bot.sendMessage(chatId, MSG.tripAreListed);
 
-        const list = await preview({
-          fromStationId: state.from,
-          toStationId: state.to,
-          departureDate: text,
-        });
+        let list;
+        try {
+          list = await preview({
+            fromStationId: state.from,
+            toStationId: state.to,
+            departureDate: text,
+          });
+        } catch (err) {
+          clearState(chatId);
+          console.error("[preview error]", err?.message || err);
+          return await bot.sendMessage(
+            chatId,
+            `⚠️ Seferler sorgulanırken hata oluştu:\n${err?.message || "TCDD servisine erişilemedi."}`,
+          );
+        }
 
-        if (!list.length) {
+        if (!list || !list.length) {
           clearState(chatId);
           return bot.sendMessage(chatId, MSG.notTripFound);
         }
@@ -793,7 +803,10 @@ async function startSearchProcess(bot, chatId, state) {
 
     return true;
   } catch (err) {
-    await bot.sendMessage(chatId, MSG.anErrorOccurred);
+    const errorText = err?.message
+      ? `⚠️ İşlem sırasında hata oluştu:\n${err.message}`
+      : MSG.anErrorOccurred;
+    await bot.sendMessage(chatId, errorText);
     console.error("[startSearchProcess] Error:", err);
     return true;
   }
